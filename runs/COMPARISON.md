@@ -12,7 +12,7 @@ Qwen3-recommended sampler) and `bench.sh` with prompt caching disabled,
 | **M2 Max 64GB** | Apple M2 Max (8P+4E) | 64 GB unified (400 GB/s) | Metal (integrated) | macOS 25.4 | native (brew llama.cpp) |
 | **3090 ×1** | Intel i9-13900K (32 cores) | 126 GB DDR + 24 GB VRAM | 1 × RTX 3090 (936 GB/s) | Ubuntu 24.04 | docker ggml-org/llama.cpp:server-cuda |
 | **3090 ×2** | Intel i9-13900K (32 cores) | 126 GB DDR + 48 GB VRAM | 2 × RTX 3090 | Ubuntu 24.04 | same image, `--gpus all` |
-| **agentics-hosted** | AMD Ryzen AI Max+ ("Strix Halo") in HP Z2 Mini G1a | 128 GB unified (≈256 GB/s LPDDR5x) | Radeon 8060S iGPU (40 CU RDNA 3.5) | Linux | llama.cpp build 9000 (same as ours) |
+| **agentics-hosted** | AMD Ryzen AI Max+ ("Strix Halo") in HP Z2 Mini G1a | 128 GB unified (≈256 GB/s LPDDR5x) | Radeon 8060S iGPU (40 CU RDNA 3.5) | Linux | llama.cpp `:server-vulkan` (containers managed by [sovereign-engine](https://github.com/agenticsnz/sovereign-engine)) |
 
 ## Results — out-of-the-box baselines (median of 5 runs, caching off)
 
@@ -97,28 +97,43 @@ comparison.
 ### What it tells us about Strix Halo as an inference platform
 
 Strix Halo's headline spec: 16 Zen 5 cores + Radeon 8060S iGPU (40 RDNA
-3.5 compute units) sharing **256-bit LPDDR5x at ~256 GB/s**. Compared
-to alternatives in roughly the same class:
+3.5 compute units) sharing **256-bit LPDDR5x at ~256 GB/s**. The
+agentics deployment uses **llama.cpp's Vulkan backend**, not ROCm.
+sovereign-engine's source (`proxy/src/docker/llamacpp.rs`) explicitly
+notes that ROCm tested at **0.6–2.4 t/s vs Vulkan's 4.5 t/s** on their
+hardware, so they ship Vulkan only and route AMD inference through it.
+Vulkan is portable but generally slower than CUDA on the same silicon.
 
-| Platform | Mem BW | Gen on this model | Pre-fill on this model |
-| --- | ---: | ---: | ---: |
-| M2 Max 64 GB (Metal) | 400 GB/s | 35.6 → 44.1 (opt) | 882 → 1 161 (opt) |
-| **Strix Halo 128 GB (Vulkan/ROCm via llama.cpp)** | **~256 GB/s** | **57** | **1 005** |
-| RTX 3090 24 GB | 936 GB/s | 137.3 → 143.1 (opt) | 3 150 → 4 669 (opt) |
+Compared in the same class:
+
+| Platform | Mem BW | Backend | Gen this model | Pre-fill this model |
+| --- | ---: | --- | ---: | ---: |
+| M2 Max 64 GB | 400 GB/s | Metal (native) | 35.6 → 44.1 (opt) | 882 → 1 161 (opt) |
+| **Strix Halo 128 GB** | **~256 GB/s** | **Vulkan** | **57** | **1 005** |
+| RTX 3090 24 GB | 936 GB/s | CUDA | 137.3 → 143.1 (opt) | 3 150 → 4 669 (opt) |
 
 The interesting bit: **Strix Halo gets *more* tokens per second than M2
-Max despite having 36 % less memory bandwidth.** Two plausible reasons:
+Max despite having 36 % less memory bandwidth and using Vulkan (not the
+hardware-vendor backend).** Most likely explanations:
 
-1. **MoE inference doesn't fully use bandwidth.** The 3B-active
-   architecture means each forward pass touches a small fraction of
-   weights; expert-routing and compute become a larger share of the
-   step time. RDNA 3.5 may be more efficient on this compute mix than
-   Apple's GPU is.
-2. **Our M2 Max numbers are thermal-limited.** The min/median/max
-   spread on the M2 Max gen probe was 17 % — sustained inference is
-   pushing the laptop into throttle. The Strix Halo in a mini PC
-   chassis likely has more thermal headroom and runs at full clocks
-   continuously. (Variance: M2 Max 17 %, Strix Halo <1 %.)
+1. **Our M2 Max is thermally throttling.** Variance on the M2 Max gen
+   probe was 17 % (min 39.9 / max 46.7); sustained inference pushes the
+   laptop into thermal limits. Strix Halo in a mini-PC chassis ran at
+   < 1 % variance — full clocks, indefinitely.
+2. **MoE-A3B touches a small slice of weights per token.** With only
+   3 B params active, each step is more compute-bound than bandwidth-
+   bound — exactly the regime where the bandwidth gap (256 vs 400 GB/s)
+   matters less than the compute pipeline efficiency. On a dense 70 B
+   model the ranking would likely flip the other way.
+3. **The MacBook M2 Max has CPU-side overhead in our config** that the
+   Strix Halo box may not have (different scheduler, different idle
+   behaviour, etc.). Hard to quantify without instrumenting.
+
+This is genuinely surprising and worth flagging: **a $4k mini-PC with
+a Vulkan iGPU outpaces a $5k laptop with a hardware-tuned Metal backend
+on this workload, primarily because the laptop throttles**. If we re-
+ran the M2 Max numbers in a desk-mounted Mac Studio (M2 Max on a desk
+with a fan), the gap would likely close or reverse.
 
 What it can run that 24 GB GPUs can't: the **128 GB unified pool**
 opens the door to much larger models (70B Q4, 120B Q3, MoE-405B at

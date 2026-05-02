@@ -12,7 +12,7 @@ Qwen3-recommended sampler) and `bench.sh` with prompt caching disabled,
 | **M2 Max 64GB** | Apple M2 Max (8P+4E) | 64 GB unified (400 GB/s) | Metal (integrated) | macOS 25.4 | native (brew llama.cpp) |
 | **3090 ×1** | Intel i9-13900K (32 cores) | 126 GB DDR + 24 GB VRAM | 1 × RTX 3090 (936 GB/s) | Ubuntu 24.04 | docker ggml-org/llama.cpp:server-cuda |
 | **3090 ×2** | Intel i9-13900K (32 cores) | 126 GB DDR + 48 GB VRAM | 2 × RTX 3090 | Ubuntu 24.04 | same image, `--gpus all` |
-| **agentics-hosted** | unknown (remote OpenAI-compatible API) | unknown | unknown | unknown | identifies as `llama.cpp version 9000` via `.timings` |
+| **agentics-hosted** | AMD Ryzen AI Max+ ("Strix Halo") in HP Z2 Mini G1a | 128 GB unified (≈256 GB/s LPDDR5x) | Radeon 8060S iGPU (40 CU RDNA 3.5) | Linux | llama.cpp build 9000 (same as ours) |
 
 ## Results — out-of-the-box baselines (median of 5 runs, caching off)
 
@@ -77,34 +77,73 @@ Long-prompt time-to-first-token (the user-visible "is it thinking?" pause):
 6.6 s → 1.9 s → 1.2 s. RAG and document-QA workflows feel substantially
 snappier on dual GPU; chat with short prompts feels identical.
 
-## Hosted (agentics.org.nz) shape
+## Hosted (agentics.org.nz) — AMD Strix Halo mini PC
 
-The hosted endpoint at `https://api.agentics.org.nz/v1` runs the same
-GGUF (`unsloth/Qwen3.6-35B-A3B-GGUF`) and identifies via the `.timings`
-block as the same llama.cpp build 9000 we have locally. The numbers
-suggest the underlying box sits roughly between an out-of-the-box M2
-Max and an optimized one for pre-fill, with notably higher generation
-throughput than M2 Max:
+The hosted endpoint runs on a single **HP Z2 Mini G1a** with an **AMD Ryzen
+AI Max+ ("Strix Halo")** APU and **128 GB of unified memory** addressable as
+VRAM. Same GGUF and same llama.cpp build as our locals — the only thing
+that differs is the inference hardware. That makes this a fair platform
+comparison.
 
-- **Generation:** ~57 tok/s, **+27 % over M2 Max baseline** (35.6) and
-  **+30 % over M2 Max best** (44.1). Below 3090 single (143). Profile
-  is consistent with an M-series Ultra-class memory bandwidth
-  (~600–800 GB/s) or a different GPU class entirely.
-- **Pre-fill:** ~1 005 tok/s, between M2 Max baseline (882) and M2 Max
-  best (1 161). Far below 3090 single (3 150) and dual (4 730).
-- **Variance:** under 1 % spread across 5 runs (gen 55.1–56.3). Tighter
-  than the 3090 (`0.4 %`) and far tighter than the M2 Max under load
-  (17 % thermal swing). Suggests well-cooled stable hardware.
+### Numbers
 
-What that combination plausibly is: **an Apple Silicon Ultra** (M2
-Ultra at 800 GB/s gives roughly the right gen speed; pre-fill being
-modest is consistent with no tensor cores), a single mid-range workstation
-GPU (e.g. A4000 / A5000 class), or an Apple M3/M4 Max with sustained
-load not throttling.
+- **Generation: ~57 tok/s.** +27 % over M2 Max baseline (35.6), +30 %
+  over M2 Max best (44.1). About 40 % of single 3090 (143).
+- **Pre-fill: ~1 005 tok/s.** Between M2 Max baseline (882) and M2 Max
+  best (1 161). About 32 % of single 3090 (3 150).
+- **Variance: under 1 %** across 5 runs — consistent with a steady-state
+  desktop, no thermal throttling.
 
-In practice for an end user calling this API: expect ~60 tokens/sec
-for chat-style output, with a long-prompt first-token latency of ~6 s
-(comparable to local M2 Max) — i.e. roughly "M-Series Mac in the cloud."
+### What it tells us about Strix Halo as an inference platform
+
+Strix Halo's headline spec: 16 Zen 5 cores + Radeon 8060S iGPU (40 RDNA
+3.5 compute units) sharing **256-bit LPDDR5x at ~256 GB/s**. Compared
+to alternatives in roughly the same class:
+
+| Platform | Mem BW | Gen on this model | Pre-fill on this model |
+| --- | ---: | ---: | ---: |
+| M2 Max 64 GB (Metal) | 400 GB/s | 35.6 → 44.1 (opt) | 882 → 1 161 (opt) |
+| **Strix Halo 128 GB (Vulkan/ROCm via llama.cpp)** | **~256 GB/s** | **57** | **1 005** |
+| RTX 3090 24 GB | 936 GB/s | 137.3 → 143.1 (opt) | 3 150 → 4 669 (opt) |
+
+The interesting bit: **Strix Halo gets *more* tokens per second than M2
+Max despite having 36 % less memory bandwidth.** Two plausible reasons:
+
+1. **MoE inference doesn't fully use bandwidth.** The 3B-active
+   architecture means each forward pass touches a small fraction of
+   weights; expert-routing and compute become a larger share of the
+   step time. RDNA 3.5 may be more efficient on this compute mix than
+   Apple's GPU is.
+2. **Our M2 Max numbers are thermal-limited.** The min/median/max
+   spread on the M2 Max gen probe was 17 % — sustained inference is
+   pushing the laptop into throttle. The Strix Halo in a mini PC
+   chassis likely has more thermal headroom and runs at full clocks
+   continuously. (Variance: M2 Max 17 %, Strix Halo <1 %.)
+
+What it can run that 24 GB GPUs can't: the **128 GB unified pool**
+opens the door to much larger models (70B Q4, 120B Q3, MoE-405B at
+heavy quants) that simply don't fit on a single 3090. For the 35B-A3B
+we tested, the bottleneck isn't memory capacity but bandwidth — which
+is where the 3090 wins by a factor of 3+.
+
+### Practical reading
+
+- For *running this exact model*: 3090 ≫ Strix Halo ≫ M2 Max, by gen
+  tok/s. Single 3090 is **2.5× faster gen** and **4.7× faster pre-fill**
+  than Strix Halo.
+- For *fitting much bigger models locally*: Strix Halo's 128 GB shared
+  pool is genuinely useful. A 3090 with 24 GB tops out around this
+  size class.
+- For *low-power / mini-PC desk hardware*: Strix Halo at ~50–80 W
+  full-load is dramatically more efficient than dual 3090s pulling
+  ~600 W. If watts and noise matter, the gap is significant.
+
+For the user: hosted agentics gives you ~30 % better generation than
+your M2 Max with similar pre-fill latency. If raw throughput matters
+and the 3090 box is available, that wins by a wide margin. If you'd
+rather not own that 3090 box (or want a quieter local option for very
+large models), Strix Halo is a credible alternative — and the API
+above is one way to try it without committing $4k to the hardware.
 
 
 

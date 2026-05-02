@@ -59,11 +59,36 @@ for f in p1.txt p2.txt p3.txt; do
 done
 
 # --- environment fingerprint -------------------------------------------------
-CHIP=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -m)
-MEM_GB=$(awk -v b="$(sysctl -n hw.memsize 2>/dev/null || echo 0)" 'BEGIN{print int(b/1073741824)}')
-CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 0)
+case "$(uname)" in
+  Darwin)
+    CHIP=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -m)
+    MEM_GB=$(awk -v b="$(sysctl -n hw.memsize 2>/dev/null || echo 0)" 'BEGIN{print int(b/1073741824)}')
+    ;;
+  Linux)
+    CHIP=$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null | xargs || uname -m)
+    MEM_GB=$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
+    ;;
+  *)
+    CHIP=$(uname -m); MEM_GB=0
+    ;;
+esac
+CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 0)
 OS=$(uname -srm)
-LLAMA_VER=$(llama-server --version 2>&1 | grep -m1 -E "version|build" | tr -s ' ' || echo "unknown")
+
+# GPU info (best-effort; empty on machines without nvidia-smi/Metal)
+GPU=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+  GPU=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null \
+        | awk -F', ' '{print $1" ("$2")"}' | paste -sd '; ' -)
+fi
+
+# llama-server version: prefer native binary, else fall back to /v1/props
+if command -v llama-server >/dev/null 2>&1; then
+  LLAMA_VER=$(llama-server --version 2>&1 | grep -m1 -E "version|build" | tr -s ' ' || echo "unknown")
+else
+  LLAMA_VER=$(curl -sf "$HOST/v1/props" 2>/dev/null | jq -r '.build_info // empty' || echo "unknown (server)")
+fi
+
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 TIMESTAMP_FILE=$(date -u +"%Y%m%dT%H%M%SZ")    # filesystem-safe (no colons)
 mkdir -p "$OUT_DIR"
@@ -175,6 +200,7 @@ echo "================ RESULTS ================"
 echo "host  : $HOST"
 echo "model : $MODEL"
 echo "chip  : $CHIP ($CORES cores, ${MEM_GB} GB)"
+[[ -n "$GPU" ]] && echo "gpu   : $GPU"
 echo "os    : $OS"
 echo "build : $LLAMA_VER"
 echo "runs  : $RUNS per probe"
@@ -195,6 +221,7 @@ jq -n \
   --arg host "$HOST" \
   --arg model "$MODEL" \
   --arg chip "$CHIP" \
+  --arg gpu "$GPU" \
   --argjson mem "${MEM_GB:-0}" \
   --argjson cores "${CORES:-0}" \
   --arg os "$OS" \
@@ -206,7 +233,7 @@ jq -n \
   timestamp: $ts,
   "label": $lbl,
   env: {
-    host: $host, model: $model, chip: $chip,
+    host: $host, model: $model, chip: $chip, gpu: $gpu,
     memory_gb: $mem, cores: $cores, os: $os, llama_build: $build,
     runs_per_probe: $runs
   },

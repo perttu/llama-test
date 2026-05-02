@@ -25,11 +25,18 @@ throttling and other variance are visible, not averaged away.
 
 ## Prerequisites
 
+**macOS (Apple Silicon, native Metal):**
 ```bash
 brew install llama.cpp jq
 ```
 
-Plus the GGUF you want to test. For the default model:
+**Linux + NVIDIA (Docker, easiest):**
+```bash
+sudo apt install -y jq curl
+# plus: working nvidia-smi, docker, and nvidia-container-toolkit
+```
+
+Plus the GGUF you want to test. For the default model (~21 GB):
 
 ```bash
 mkdir -p ~/models
@@ -37,8 +44,8 @@ curl -L -C - -o ~/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
   https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
 ```
 
-(File is ~21 GB. Needs at least 28 GB free disk during download for
-safety, and 64 GB unified memory to run with the default 32K context.)
+(Needs at least 28 GB free disk during download. Will fit in 24 GB
+GPU VRAM or 64 GB Apple unified memory at the default 32K context.)
 
 ## Run it
 
@@ -46,10 +53,12 @@ Two terminals:
 
 ```bash
 # terminal 1 — start the server (blocks; ctrl-C to stop)
-./server.sh
+./server.sh                          # macOS native
+RUNTIME=docker ./server.sh           # Linux + NVIDIA via Docker
 
 # terminal 2 — wait for the server to log "HTTP server listening", then:
 ./bench.sh --label "M2 Max 64GB"
+./bench.sh --label "RTX 3090"
 ```
 
 Output:

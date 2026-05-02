@@ -1,0 +1,190 @@
+{
+  "timestamp": "2026-05-02T15:52:49Z",
+  "label": "RTX 3090 single f16-KV",
+  "env": {
+    "host": "http://localhost:8001",
+    "model": "qwen3.6-35b-a3b",
+    "chip": "13th Gen Intel(R) Core(TM) i9-13900K",
+    "gpu": "NVIDIA GeForce RTX 3090 (24576 MiB);NVIDIA GeForce RTX 3090 (24576 MiB)",
+    "memory_gb": 126,
+    "cores": 32,
+    "os": "Linux 6.8.0-87-generic x86_64",
+    "llama_build": "unknown (server)",
+    "runs_per_probe": 5
+  },
+  "raw": [
+    {
+      "probe": "P1_gen_speed",
+      "run": 1,
+      "prefill_tps": 366.4815934619684,
+      "gen_tps": 148.37147469376126,
+      "ttft_ms": 109.146,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 2,
+      "prefill_tps": 964.3899028377173,
+      "gen_tps": 148.14284426853854,
+      "ttft_ms": 41.477,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 3,
+      "prefill_tps": 961.74653170157,
+      "gen_tps": 147.7552286881552,
+      "ttft_ms": 41.591,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 4,
+      "prefill_tps": 961.214975729322,
+      "gen_tps": 147.4213427283317,
+      "ttft_ms": 41.614,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 5,
+      "prefill_tps": 956.2514941429596,
+      "gen_tps": 147.53741610346307,
+      "ttft_ms": 41.83,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 1,
+      "prefill_tps": 3186.481933950255,
+      "gen_tps": 143.8641922025608,
+      "ttft_ms": 1842.157,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 2,
+      "prefill_tps": 3179.395351583171,
+      "gen_tps": 143.79661406906075,
+      "ttft_ms": 1846.263,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 3,
+      "prefill_tps": 3180.2428361914885,
+      "gen_tps": 144.02373511154636,
+      "ttft_ms": 1845.771,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 4,
+      "prefill_tps": 3175.8552762209597,
+      "gen_tps": 143.79213409095811,
+      "ttft_ms": 1848.321,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 5,
+      "prefill_tps": 3165.3863119420803,
+      "gen_tps": 143.35102125656726,
+      "ttft_ms": 1854.434,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 1,
+      "prefill_tps": 1143.3585492641291,
+      "gen_tps": 146.35687015247754,
+      "ttft_ms": 75.217,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 2,
+      "prefill_tps": 1133.2639318987442,
+      "gen_tps": 146.16339006105025,
+      "ttft_ms": 75.887,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 3,
+      "prefill_tps": 1134.5347088467322,
+      "gen_tps": 145.89741573366484,
+      "ttft_ms": 75.802,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 4,
+      "prefill_tps": 1125.8902387934647,
+      "gen_tps": 145.8535583600926,
+      "ttft_ms": 76.384,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 5,
+      "prefill_tps": 1118.7573987589599,
+      "gen_tps": 145.5916663330191,
+      "ttft_ms": 76.871,
+      "prompt_n": 86,
+      "gen_n": 2000
+    }
+  ],
+  "summary": [
+    {
+      "probe": "P1_gen_speed",
+      "prefill_min": 366.5,
+      "prefill_med": 961.2,
+      "prefill_max": 964.4,
+      "gen_min": 147.4,
+      "gen_med": 147.8,
+      "gen_max": 148.4,
+      "ttft_med_ms": 42,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P2_prefill",
+      "prefill_min": 3165.4,
+      "prefill_med": 3179.4,
+      "prefill_max": 3186.5,
+      "gen_min": 143.4,
+      "gen_med": 143.8,
+      "gen_max": 144.0,
+      "ttft_med_ms": 1846,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P3_thinking",
+      "prefill_min": 1118.8,
+      "prefill_med": 1133.3,
+      "prefill_max": 1143.4,
+      "gen_min": 145.6,
+      "gen_med": 145.9,
+      "gen_max": 146.4,
+      "ttft_med_ms": 76,
+      "prompt_n": 86,
+      "gen_n": 2000
+    }
+  ]
+}

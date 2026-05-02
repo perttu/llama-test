@@ -13,16 +13,29 @@ Qwen3-recommended sampler) and `bench.sh` with prompt caching disabled,
 | **3090 ×1** | Intel i9-13900K (32 cores) | 126 GB DDR + 24 GB VRAM | 1 × RTX 3090 (936 GB/s) | Ubuntu 24.04 | docker ggml-org/llama.cpp:server-cuda |
 | **3090 ×2** | Intel i9-13900K (32 cores) | 126 GB DDR + 48 GB VRAM | 2 × RTX 3090 | Ubuntu 24.04 | same image, `--gpus all` |
 
-## Results (median of 5 runs, prompt caching disabled)
+## Results — out-of-the-box baselines (median of 5 runs, caching off)
 
 | Probe | Metric | M2 Max | 3090 ×1 | 3090 ×2 |
 | --- | --- | --- | --- | --- |
-| P1 — short prompt, 600-tok generation | gen tok/s | 41.3 | 143.9 | 144.6 |
-| P2 — 5870-tok prompt, 60-tok generation | pre-fill tok/s | 882.6 | 3 150.8 | **4 729.8** |
-| P2 | TTFT (ms) | 6 643 | 1 863 | **1 241** |
+| P1 — short prompt, 600-tok gen | gen tok/s | 41.3 | 143.9 | 144.6 |
+| P2 — 5870-tok prompt, 60-tok gen | pre-fill tok/s | 882.6 | 3 150.8 | 4 729.8 |
+| P2 | TTFT (ms) | 6 643 | 1 863 | 1 241 |
 | P2 | gen tok/s | 35.6 | 137.3 | 139.3 |
-| P3 — thinking-mode reasoning, ~2K-tok gen | pre-fill tok/s | 397.8 | 1 110.3 | 1 125.5 |
+| P3 — thinking-mode reasoning | pre-fill tok/s | 397.8 | 1 110.3 | 1 125.5 |
 | P3 | gen tok/s | 42.4 | 141.6 | 143.5 |
+
+## Results — best optimized configs
+
+| Probe | Metric | M2 Max f16+ub2048 | 3090 ×1 f16+ub2048 | 3090 ×2 f16+ub2048 |
+| --- | --- | --- | --- | --- |
+| P1 | gen tok/s | 42.3 | 146.7 | **148.4** |
+| P2 | pre-fill tok/s | 1 160.5 | 4 669.3 | **5 430.6** |
+| P2 | TTFT (ms) | 5 058 | 1 257 | **1 081** |
+| P2 | gen tok/s | 44.1 | 143.1 | **145.4** |
+| P3 | gen tok/s | 42.2 | 145.5 | **147.9** |
+
+Optimization gain over baseline (P2 pre-fill): M2 Max **+31 %**,
+3090 ×1 **+48 %**, 3090 ×2 **+15 %**.
 
 ## Key observations
 
@@ -128,6 +141,74 @@ choice on memory-constrained machines (e.g. 32 GB Mac), but at
 ```
 
 For 32 GB machines: keep `-ctk q8_0 -ctv q8_0` and use `-c 16384`.
+
+## RTX 3090 optimization sweep
+
+Same probes, single and dual GPU, identical sweep matrix to the M2 run.
+
+| Config                                        | P1 gen | P2 prefill | P2 gen | P3 think gen |
+| --------------------------------------------- | -----: | ---------: | -----: | -----------: |
+| 1×3090 baseline (q8 KV, `-ub` default 512)    | 143.9  | 3 150.8    | 137.3  | 141.6        |
+| 1×3090 `-ub 2048`                             | 143.2  | 4 646.5 (+47 %) | 137.0 | 141.3 |
+| 1×3090 `-ctk/-ctv f16`                        | 147.8  | 3 179.4    | 143.8 (+5 %) | 145.9 |
+| **1×3090 f16 KV + `-ub 2048`** ⭐             | 146.7  | **4 669.3 (+48 %)** | 143.1 | 145.5 |
+| 2×3090 baseline                               | 144.6  | 4 729.8    | 139.3  | 143.5        |
+| **2×3090 f16 KV + `-ub 2048`** ⭐⭐           | 148.4  | **5 430.6 (+72 % vs 1× baseline)** | **145.4** | **147.9** |
+| 1×3090 + spec-decode (vocab-mismatch fallback) | ≈baseline | ≈baseline | ≈baseline | ≈baseline |
+| 2×3090 + spec-decode (vocab translation engaged) | 100.3 | 4 770.0 | **48.4 ⬇** | 90.5 |
+
+### What worked: `-ub 2048`
+
+Same flag, dramatically bigger effect than on Metal: **+47 % pre-fill on
+single 3090** (vs +19 % on M2 Max). Ampere tensor cores scale with batch
+size much better than Metal's matmul kernels — the default `-ub 512` was
+leaving most of the GPU's throughput on the table.
+
+### What worked but only modestly: f16 KV
+
+Single 3090 f16 KV: **+5 % gen** (vs M2's +14 %). The CUDA q8 dequantize
+kernels are more efficient than Metal's, so the gain from skipping them
+is smaller. Still a free win on a 24 GB-or-larger card.
+
+### Dual GPU shrinks as a value-add when single is optimized
+
+| Comparison | Pre-fill ratio |
+| --- | ---: |
+| Baseline 1× → baseline 2× | 1.50× |
+| Optimized 1× → optimized 2× | 1.16× |
+
+`-ub 2048` already saturates a single 3090 on this workload. Adding a
+second card only buys +16 % more pre-fill (and zero generation gain),
+because the marginal compute is not the bottleneck — PCIe cross-talk and
+synchronization eat most of the theoretical 2×.
+
+**Practical implication**: a single optimized 3090 is preferable to a
+naive dual-3090 for inference of this size class. If you have two cards,
+keep one for inference (optimized) and use the other for something else.
+
+### What didn't work: speculative decoding
+
+Same negative result as on M2, with the cause now fully understood:
+
+- **Single GPU**: draft context allocation OOMs (target uses 22.2 / 24 GB).
+  Server silently falls back to non-spec mode → numbers identical to
+  baseline, but spec decode wasn't actually running.
+- **Dual GPU**: draft loads on GPU 1, but the server logs
+  `target and draft vocabs are not compatible - tokens will be translated
+  between the two`. Token-level translation between Qwen3 and Qwen3.6
+  vocabs is both lossy and slow → P2 gen drops 65 % (139.3 → 48.4 tok/s).
+
+Spec decode requires a same-tokenizer-family draft. Until
+`Qwen3.6-0.6B-GGUF` is publicly available, this lever is unavailable.
+
+### Recommended 3090 flags
+
+```
+-c 32768 -ub 2048
+-fa on -ctk f16 -ctv f16
+-ngl 999 --no-context-shift
+# --gpus device=0 in the docker run; dual GPU adds ~15 % prefill at best
+```
 
 ## Adding a new column
 

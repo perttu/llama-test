@@ -24,6 +24,8 @@
 # Requires: curl, jq, a running llama-server with --alias matching MODEL.
 
 set -euo pipefail
+# Force POSIX locale so awk/printf use '.' as decimal separator regardless of host locale.
+export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 HOST="${HOST:-http://localhost:8001}"

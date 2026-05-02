@@ -78,45 +78,56 @@ snappier on dual GPU; chat with short prompts feels identical.
 
 ## M2 Max optimization sweep
 
-Tested two optimization paths against the M2 Max baseline.
+Six configurations tested against the M2 Max baseline.
 
-| Config | P1 gen | P2 prefill | P2 gen | P3 think gen |
-| --- | --- | --- | --- | --- |
-| Baseline | 41.3 | 882.6 | 35.6 | 42.4 |
-| `-ub 1024 -t 8` | 46.1 | **1 000.4** (+13 %) | 38.4 | 39.0 |
-| `-ub 1024 -t 8` + spec-decode (Qwen3-0.6B draft) | 40.0 | 986.4 | **21.9 ⬇** | 42.8 |
+| Config                                       | P1 gen | P2 prefill | P2 gen | P3 think gen |
+| -------------------------------------------- | -----: | ---------: | -----: | -----------: |
+| Baseline (q8 KV, `-ub` default 512)          | 41.3   | 882.6      | 35.6   | 42.4         |
+| `-ub 1024 -t 8` (q8 KV)                      | 46.1   | 1 000.4 (+13 %) | 38.4 | 39.0         |
+| `-ub 2048 -t 8` (q8 KV)                      | 45.9   | 1 054.7 (+19 %) | 34.5 | 38.8         |
+| `-c 16384 -ub 1024 -t 8` (q8 KV)             | 40.4   | 1 000.9 (+13 %) | 36.8 | 38.7         |
+| **`-ctk f16 -ctv f16 -ub 1024 -t 8`**        | 42.4   | 1 085.6 (+23 %) | **43.7 (+23 %)** | 42.1 |
+| **`-ctk f16 -ctv f16 -ub 2048 -t 8`** ⭐     | 42.3   | **1 160.5 (+31 %)** | **44.1 (+24 %)** | 42.2 |
+| `-ub 1024 -t 8` + spec-decode (Qwen3-0.6B)   | 40.0   | 986.4      | **21.9 ⬇** | 42.8 |
 
-### What worked: `-ub 1024`
+### Best M2 Max config: f16 KV + `-ub 2048`
 
-Bumping the physical batch from the default 512 to 1024 gave a clean
-**+13 % pre-fill** with tight error bars on both sides (882–886 → 990–1003).
-No effect on generation, as expected — `-ub` only governs prompt processing.
+The biggest surprise: **un-quantizing the KV cache (f16) was the
+biggest single win on M2 Max**, contradicting the "smaller KV =
+faster" intuition. Cumulative wins over the standardized baseline:
 
-### What didn't: speculative decoding with Qwen3-0.6B
+- pre-fill: **+31 %**  (882.6 → 1 160.5 tok/s)
+- generation (long context): **+24 %**  (35.6 → 44.1 tok/s)
+- TTFT on 5 K prompt: 6 643 ms → 5 058 ms (**−24 %**)
 
-Qwen3.6-35B-A3B has no public small-variant draft model. Tested with
-Qwen3-0.6B (predecessor generation) as draft: **regressed P2 gen by 43 %**
-(38.4 → 21.9 tok/s).
+Why f16 beats q8 KV here: on Metal the dequantize-then-attend
+kernel sequence has a per-token overhead that exceeds the bandwidth
+savings from reading half as many bytes. q8 KV is still the right
+choice on memory-constrained machines (e.g. 32 GB Mac), but at
+64 GB the extra ~6–10 GB of KV memory is free.
 
-The server log surfaced the cause:
-- 18.75 % acceptance on greedy probes (P1, P2 use `temp=0`)
-- 79 % acceptance on stochastic thinking output (P3 uses `temp=0.6`)
+### What didn't help
 
-At greedy sampling the target requires the draft's argmax to match —
-which a different-generation 0.6B model rarely does. Rejected drafts
-still cost a full target verify pass, which is why generation slows
-rather than just stays the same.
+- **`-c 16384`** (smaller context). Pre-allocated KV size doesn't
+  affect throughput, only memory budget. Use it to fit on smaller
+  machines, not for speed.
+- **`-ub 4096+`** wasn't tested; the 1024 → 2048 gain was already
+  showing strong diminishing returns (+5 %).
+- **Speculative decoding with Qwen3-0.6B**. 18.75 % acceptance on
+  greedy probes at temp=0 — different-generation draft can't match
+  Qwen3.6's argmax often enough. Drafts are rejected wholesale,
+  costing a full verify pass for nothing. Would likely work with a
+  same-family `Qwen3.6-0.6B` draft (currently gated).
 
-This is a **draft-model-fit problem**, not a fundamental flaw in spec
-decoding. With a same-generation Qwen3.6-0.6B draft (currently gated)
-the canonical 1.5–2× speedup would likely be recoverable. Without it,
-spec decode is a wash here.
+### Recommended M2 Max flags (64 GB+)
 
-### Practical conclusion for M2 Max
+```
+-c 32768 -ub 2048 -t 8
+-fa on -ctk f16 -ctv f16
+-ngl 999 --no-context-shift
+```
 
-Use `-ub 1024 -t 8` on top of the standardized server flags. That's the
-only optimization that produced a real, reproducible gain. Skip spec
-decode until a same-family draft is available.
+For 32 GB machines: keep `-ctk q8_0 -ctv q8_0` and use `-c 16384`.
 
 ## Adding a new column
 

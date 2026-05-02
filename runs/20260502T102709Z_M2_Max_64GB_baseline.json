@@ -1,0 +1,189 @@
+{
+  "timestamp": "2026-05-02T10:27:09Z",
+  "label": "M2 Max 64GB baseline",
+  "env": {
+    "host": "http://localhost:8001",
+    "model": "qwen3.6-35b-a3b",
+    "chip": "Apple M2 Max",
+    "memory_gb": 64,
+    "cores": 12,
+    "os": "Darwin 25.4.0 arm64",
+    "llama_build": "version: 9000 (1a03cf47f)",
+    "runs_per_probe": 5
+  },
+  "raw": [
+    {
+      "probe": "P1_gen_speed",
+      "run": 1,
+      "prefill_tps": 228.76097337794175,
+      "gen_tps": 39.90851637762369,
+      "ttft_ms": 174.855,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 2,
+      "prefill_tps": 244.79204915424347,
+      "gen_tps": 41.269530547397,
+      "ttft_ms": 163.404,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 3,
+      "prefill_tps": 245.54037297582653,
+      "gen_tps": 46.74524178236179,
+      "ttft_ms": 162.906,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 4,
+      "prefill_tps": 241.95206929507265,
+      "gen_tps": 40.35042460751815,
+      "ttft_ms": 165.322,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P1_gen_speed",
+      "run": 5,
+      "prefill_tps": 241.98427102238352,
+      "gen_tps": 44.9683861003618,
+      "ttft_ms": 165.3,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 1,
+      "prefill_tps": 884.1570503918307,
+      "gen_tps": 34.1054038875613,
+      "ttft_ms": 6639.092,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 2,
+      "prefill_tps": 885.6489860752441,
+      "gen_tps": 37.260554362527806,
+      "ttft_ms": 6627.908,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 3,
+      "prefill_tps": 878.0169680144551,
+      "gen_tps": 35.63273341667434,
+      "ttft_ms": 6685.52,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 4,
+      "prefill_tps": 875.5296618859564,
+      "gen_tps": 33.60160481264585,
+      "ttft_ms": 6704.513,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P2_prefill",
+      "run": 5,
+      "prefill_tps": 882.6321745440459,
+      "gen_tps": 38.97037666817568,
+      "ttft_ms": 6650.562,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 1,
+      "prefill_tps": 399.57255029503324,
+      "gen_tps": 43.47382842923189,
+      "ttft_ms": 215.23,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 2,
+      "prefill_tps": 399.060815012111,
+      "gen_tps": 44.10376053580953,
+      "ttft_ms": 215.506,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 3,
+      "prefill_tps": 397.79271299255754,
+      "gen_tps": 42.4130227659534,
+      "ttft_ms": 216.193,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 4,
+      "prefill_tps": 389.46276781226084,
+      "gen_tps": 39.479523283966756,
+      "ttft_ms": 220.817,
+      "prompt_n": 86,
+      "gen_n": 2000
+    },
+    {
+      "probe": "P3_thinking",
+      "run": 5,
+      "prefill_tps": 389.3887050108893,
+      "gen_tps": 38.771620461040314,
+      "ttft_ms": 220.859,
+      "prompt_n": 86,
+      "gen_n": 2000
+    }
+  ],
+  "summary": [
+    {
+      "probe": "P1_gen_speed",
+      "prefill_min": 228.8,
+      "prefill_med": 242,
+      "prefill_max": 245.5,
+      "gen_min": 39.9,
+      "gen_med": 41.3,
+      "gen_max": 46.7,
+      "ttft_med_ms": 165,
+      "prompt_n": 40,
+      "gen_n": 600
+    },
+    {
+      "probe": "P2_prefill",
+      "prefill_min": 875.5,
+      "prefill_med": 882.6,
+      "prefill_max": 885.6,
+      "gen_min": 33.6,
+      "gen_med": 35.6,
+      "gen_max": 39,
+      "ttft_med_ms": 6651,
+      "prompt_n": 5870,
+      "gen_n": 60
+    },
+    {
+      "probe": "P3_thinking",
+      "prefill_min": 389.4,
+      "prefill_med": 397.8,
+      "prefill_max": 399.6,
+      "gen_min": 38.8,
+      "gen_med": 42.4,
+      "gen_max": 44.1,
+      "ttft_med_ms": 216,
+      "prompt_n": 86,
+      "gen_n": 2000
+    }
+  ]
+}

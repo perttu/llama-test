@@ -1,0 +1,5 @@
+# local bench results that shouldn't be shared
+runs/*.local.json
+*.tmp
+*.log
+.DS_Store

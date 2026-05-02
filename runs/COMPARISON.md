@@ -76,6 +76,48 @@ snappier on dual GPU; chat with short prompts feels identical.
 - 5 runs × 3 probes = 15 requests per machine. Reported numbers are the
   **median**; min and max are stored in the JSON for variance analysis.
 
+## M2 Max optimization sweep
+
+Tested two optimization paths against the M2 Max baseline.
+
+| Config | P1 gen | P2 prefill | P2 gen | P3 think gen |
+| --- | --- | --- | --- | --- |
+| Baseline | 41.3 | 882.6 | 35.6 | 42.4 |
+| `-ub 1024 -t 8` | 46.1 | **1 000.4** (+13 %) | 38.4 | 39.0 |
+| `-ub 1024 -t 8` + spec-decode (Qwen3-0.6B draft) | 40.0 | 986.4 | **21.9 ⬇** | 42.8 |
+
+### What worked: `-ub 1024`
+
+Bumping the physical batch from the default 512 to 1024 gave a clean
+**+13 % pre-fill** with tight error bars on both sides (882–886 → 990–1003).
+No effect on generation, as expected — `-ub` only governs prompt processing.
+
+### What didn't: speculative decoding with Qwen3-0.6B
+
+Qwen3.6-35B-A3B has no public small-variant draft model. Tested with
+Qwen3-0.6B (predecessor generation) as draft: **regressed P2 gen by 43 %**
+(38.4 → 21.9 tok/s).
+
+The server log surfaced the cause:
+- 18.75 % acceptance on greedy probes (P1, P2 use `temp=0`)
+- 79 % acceptance on stochastic thinking output (P3 uses `temp=0.6`)
+
+At greedy sampling the target requires the draft's argmax to match —
+which a different-generation 0.6B model rarely does. Rejected drafts
+still cost a full target verify pass, which is why generation slows
+rather than just stays the same.
+
+This is a **draft-model-fit problem**, not a fundamental flaw in spec
+decoding. With a same-generation Qwen3.6-0.6B draft (currently gated)
+the canonical 1.5–2× speedup would likely be recoverable. Without it,
+spec decode is a wash here.
+
+### Practical conclusion for M2 Max
+
+Use `-ub 1024 -t 8` on top of the standardized server flags. That's the
+only optimization that produced a real, reproducible gain. Skip spec
+decode until a same-family draft is available.
+
 ## Adding a new column
 
 ```bash

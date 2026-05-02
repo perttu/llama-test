@@ -21,6 +21,7 @@ ALIAS="${ALIAS:-qwen3.6-35b-a3b}"
 CTX="${CTX:-32768}"
 RUNTIME="${RUNTIME:-native}"
 DOCKER_IMAGE="${DOCKER_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}"
+GPUS="${GPUS:-all}"   # docker --gpus value: 'all' or 'device=0' / 'device=0,1' etc.
 
 [[ -f "$MODEL" ]] || { echo "ERROR: model not found at $MODEL"; echo "Set MODEL=/path/to/file.gguf"; exit 1; }
 
@@ -53,7 +54,7 @@ case "$RUNTIME" in
     command -v docker >/dev/null || { echo "ERROR: docker not found"; exit 1; }
     MODEL_DIR=$(dirname "$MODEL")
     MODEL_NAME=$(basename "$MODEL")
-    exec docker run --gpus all --rm \
+    exec docker run --gpus "$GPUS" --rm \
       -v "$MODEL_DIR":/models \
       -p "$PORT":"$PORT" \
       "$DOCKER_IMAGE" \

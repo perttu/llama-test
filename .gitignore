@@ -3,3 +3,8 @@ runs/*.local.json
 *.tmp
 *.log
 .DS_Store
+
+# secrets
+.env
+.env.*
+!.env.example

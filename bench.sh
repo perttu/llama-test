@@ -33,6 +33,8 @@ MODEL="${MODEL:-qwen3.6-35b-a3b}"
 RUNS="${RUNS:-5}"
 LABEL=""
 OUT_DIR="${OUT_DIR:-$SCRIPT_DIR/runs}"
+API_KEY="${API_KEY:-}"   # if set, sends Authorization: Bearer <key>
+HOST_TYPE="${HOST_TYPE:-auto}"   # auto | local | remote — affects env fingerprint
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -50,10 +52,22 @@ done
 command -v jq >/dev/null  || { echo "ERROR: install jq (brew install jq)"; exit 1; }
 command -v curl >/dev/null || { echo "ERROR: curl not found"; exit 1; }
 
-if ! curl -sf "$HOST/v1/models" >/dev/null; then
-  echo "ERROR: llama-server not reachable at $HOST"
-  echo "Start it with ./server.sh, then re-run."
+AUTH_HDR=()
+[[ -n "$API_KEY" ]] && AUTH_HDR=(-H "Authorization: Bearer $API_KEY")
+
+if ! curl -sf ${AUTH_HDR[@]+"${AUTH_HDR[@]}"} "$HOST/v1/models" >/dev/null; then
+  echo "ERROR: $HOST/v1/models not reachable (or auth rejected)"
+  [[ -z "$API_KEY" ]] && echo "Hint: set API_KEY=... if endpoint requires auth"
   exit 1
+fi
+
+# Auto-detect host type if not set
+if [[ "$HOST_TYPE" == "auto" ]]; then
+  if [[ "$HOST" =~ ^https?://(localhost|127\.|192\.168\.|10\.) ]]; then
+    HOST_TYPE="local"
+  else
+    HOST_TYPE="remote"
+  fi
 fi
 
 for f in p1.txt p2.txt p3.txt; do
@@ -91,6 +105,16 @@ else
   LLAMA_VER=$(curl -sf "$HOST/v1/props" 2>/dev/null | jq -r '.build_info // empty' || echo "unknown (server)")
 fi
 
+# When running against a remote endpoint, the local chip/GPU describe the
+# *client*, not the inference host. Clear those after the fingerprint scan so
+# they don't end up in the saved JSON misleadingly.
+if [[ "$HOST_TYPE" == "remote" ]]; then
+  CHIP="(unknown — remote endpoint)"
+  GPU=""
+  MEM_GB=0
+  CORES=0
+fi
+
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 TIMESTAMP_FILE=$(date -u +"%Y%m%dT%H%M%SZ")    # filesystem-safe (no colons)
 mkdir -p "$OUT_DIR"
@@ -111,20 +135,40 @@ mkbody() {
 }
 
 # Run one request → TSV: prompt_tps gen_tps ttft_ms prompt_n predicted_n
+# Strategy: prefer server-side .timings (llama.cpp). Fall back to wall-clock
+# total + .usage.*_tokens for OpenAI-compatible hosted endpoints.
 run_request() {
   local body="$1"
-  curl -sS "$HOST/v1/chat/completions" \
-    -H 'Content-Type: application/json' -d "$body" \
-  | jq -r '
-      if .timings then
-        [(.timings.prompt_per_second // 0),
-         (.timings.predicted_per_second // 0),
-         (.timings.prompt_ms // 0),
-         (.timings.prompt_n // 0),
-         (.timings.predicted_n // 0)] | @tsv
-      else
-        [0,0,0,(.usage.prompt_tokens // 0),(.usage.completion_tokens // 0)] | @tsv
-      end'
+  local resp_file=$(mktemp)
+  local t_start t_end elapsed_s
+  t_start=$(awk 'BEGIN{srand(); print systime()+rand()}' </dev/null 2>/dev/null || date +%s)
+  # Use python for sub-second precision (portable enough on macOS+Linux)
+  t_start=$(python3 -c 'import time; print(time.time())' 2>/dev/null || date +%s)
+  curl -sS ${AUTH_HDR[@]+"${AUTH_HDR[@]}"} "$HOST/v1/chat/completions" \
+    -H 'Content-Type: application/json' -d "$body" -o "$resp_file"
+  t_end=$(python3 -c 'import time; print(time.time())' 2>/dev/null || date +%s)
+  elapsed_s=$(awk -v s="$t_start" -v e="$t_end" 'BEGIN{printf "%.6f", e-s}')
+
+  jq -r --arg el "$elapsed_s" '
+    if .timings then
+      [(.timings.prompt_per_second // 0),
+       (.timings.predicted_per_second // 0),
+       (.timings.prompt_ms // 0),
+       (.timings.prompt_n // 0),
+       (.timings.predicted_n // 0)] | @tsv
+    else
+      # Hosted fallback: derive tok/s from wall-clock
+      ($el | tonumber) as $sec |
+      (.usage.prompt_tokens // 0) as $pn |
+      (.usage.completion_tokens // 0) as $gn |
+      # We cannot separate prompt_ms from gen wall-clock without streaming.
+      # Report 0 for prompt_tps (handled in summary), gen_tps = gn / sec,
+      # ttft_ms = -1 sentinel meaning "unmeasurable client-side".
+      [0,
+       (if $sec > 0 then $gn / $sec else 0 end),
+       -1, $pn, $gn] | @tsv
+    end' "$resp_file"
+  rm -f "$resp_file"
 }
 
 # --- run probes -------------------------------------------------------------
@@ -221,6 +265,7 @@ jq -n \
   --arg ts "$TIMESTAMP" \
   --arg lbl "$LABEL" \
   --arg host "$HOST" \
+  --arg htype "$HOST_TYPE" \
   --arg model "$MODEL" \
   --arg chip "$CHIP" \
   --arg gpu "$GPU" \
@@ -235,7 +280,8 @@ jq -n \
   timestamp: $ts,
   "label": $lbl,
   env: {
-    host: $host, model: $model, chip: $chip, gpu: $gpu,
+    host: $host, host_type: $htype, model: $model,
+    chip: $chip, gpu: $gpu,
     memory_gb: $mem, cores: $cores, os: $os, llama_build: $build,
     runs_per_probe: $runs
   },
